@@ -523,6 +523,55 @@ input[type=range]::-moz-range-thumb {
 }
 
 /* ============================================================
+   Atoll pin markers (SVG, rendered via Globe.gl htmlElementsData)
+   ============================================================ */
+.atoll-pin {
+  pointer-events: auto;
+  cursor: pointer;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.55));
+  transition: transform .15s ease, filter .15s ease;
+}
+.atoll-pin:hover,
+.atoll-pin.is-active {
+  transform: translate(-50%, -100%) scale(1.35);
+  filter: drop-shadow(0 0 14px currentColor)
+          drop-shadow(0 2px 4px rgba(0,0,0,0.55));
+  z-index: 5;
+}
+.atoll-pin svg { display: block; }
+.atoll-pin__core { stroke: rgba(243,232,207,0.95); stroke-width: 1.4; }
+.atoll-pin__dot  { fill: rgba(243,232,207,0.95); }
+
+/* ============================================================
+   Rail close button + scrim
+   ============================================================ */
+.rail__close {
+  display: none;
+  position: absolute;
+  top: 6px; right: 10px;
+  width: 36px; height: 36px;
+  background: transparent;
+  border: none;
+  color: var(--brass);
+  font-size: 18px;
+  font-family: var(--f-mono);
+  cursor: pointer;
+  z-index: 2;
+}
+.rail__close:hover { color: var(--coral); }
+
+.scrim {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 18;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.scrim.is-open { opacity: 1; }
+
+/* ============================================================
    WebGL fallback message
    ============================================================ */
 .webgl-fallback {
@@ -628,6 +677,9 @@ input[type=range]::-moz-range-thumb {
     opacity: 0.5;
   }
   .rail--right { display: block; }
+  .rail__close { display: block; }
+  .scrim { display: block; pointer-events: none; }
+  .scrim.is-open { pointer-events: auto; }
 
   /* Floating tray toggle buttons */
   .tray-toggle {

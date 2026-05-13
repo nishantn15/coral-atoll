@@ -6,6 +6,13 @@
 <meta name="theme-color" content="#06101e" />
 <title>Atolls of the World · A field atlas of 597 reefs</title>
 
+<link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="96x96" href="assets/favicon-96.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+<link rel="mask-icon" href="assets/favicon-512.png" color="#ff7964" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -37,6 +44,7 @@
 <main class="stage">
 
   <aside class="rail rail--left" id="rail-left">
+    <button class="rail__close" data-close="rail-left" aria-label="Close filters">✕</button>
     <section class="panel panel--filters">
       <h2 class="panel__title">Refine the&nbsp;census</h2>
 
@@ -47,8 +55,8 @@
       </div>
 
       <div class="field">
-        <span class="field__label">Region</span>
-        <div class="chips" id="region-chips"></div>
+        <span class="field__label" id="region-label">Region</span>
+        <div class="chips" id="region-chips" role="group" aria-labelledby="region-label"></div>
       </div>
 
       <div class="field">
@@ -61,11 +69,11 @@
       </div>
 
       <div class="field">
-        <span class="field__label">Tint points by</span>
-        <div class="segmented" id="color-mode">
-          <button data-mode="region" class="is-active">Region</button>
-          <button data-mode="richness">Richness</button>
-          <button data-mode="origin">Origin</button>
+        <span class="field__label" id="tint-label">Tint points by</span>
+        <div class="segmented" id="color-mode" role="radiogroup" aria-labelledby="tint-label">
+          <button data-mode="region"   class="is-active" role="radio" aria-checked="true">Region</button>
+          <button data-mode="richness" role="radio" aria-checked="false">Richness</button>
+          <button data-mode="origin"   role="radio" aria-checked="false">Origin</button>
         </div>
       </div>
     </section>
@@ -80,8 +88,8 @@
     <div id="globe"></div>
 
     <div class="globe-stage__hud">
-      <span class="hud__count" id="hud-count">597</span>
-      <span class="hud__label">visible atolls</span>
+      <span class="hud__count" id="hud-count">589</span>
+      <span class="hud__label">of 597 plotted</span>
       <span class="hud__sep">·</span>
       <span class="hud__count" id="hud-area">0</span>
       <span class="hud__label">km² mapped</span>
@@ -90,17 +98,20 @@
     <div class="globe-stage__hint">drag to rotate · scroll to zoom · click an atoll for the chart</div>
 
     <!-- Mobile-only tray toggles -->
-    <button class="tray-toggle tray-toggle--filters" data-toggle="rail-left" aria-label="Filters">
-      <span class="tray-toggle__icon">⇕</span>
+    <button class="tray-toggle tray-toggle--filters" data-toggle="rail-left"
+            aria-label="Open filters" aria-expanded="false" aria-controls="rail-left">
+      <span class="tray-toggle__icon" aria-hidden="true">⇕</span>
       <span class="tray-toggle__text">Filters</span>
     </button>
-    <button class="tray-toggle tray-toggle--detail" data-toggle="rail-right" aria-label="Detail">
-      <span class="tray-toggle__icon">↑</span>
+    <button class="tray-toggle tray-toggle--detail" data-toggle="rail-right"
+            aria-label="Open atoll detail" aria-expanded="false" aria-controls="rail-right">
+      <span class="tray-toggle__icon" aria-hidden="true">↑</span>
       <span class="tray-toggle__text">Atoll detail</span>
     </button>
   </section>
 
   <aside class="rail rail--right" id="rail-right">
+    <button class="rail__close" data-close="rail-right" aria-label="Close detail">✕</button>
     <section class="panel panel--detail" id="detail">
       <p class="detail__empty">Hover the globe to inspect an atoll.<br>
         Click to pin its full geomorphological profile here.</p>
@@ -114,6 +125,7 @@
 </footer>
 
 <div id="tooltip" class="tooltip" aria-hidden="true"></div>
+<div id="scrim" class="scrim" aria-hidden="true"></div>
 
 <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl@2.32.6/dist/globe.gl.min.js"></script>

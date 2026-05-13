@@ -71,15 +71,26 @@ function colorFor(atoll, mode) {
   return "#fff";
 }
 
-// Bumped radii / altitudes so points are actually visible on a phone screen.
-// Globe.gl point units are fractions of globe radius.
-function radiusFor(atoll) {
+// Pin marker size grows softly with atoll area
+function pinScaleFor(atoll) {
   const a = atoll.area_km2 || 0.1;
-  return 0.35 + 0.55 * Math.log10(1 + a);   // 0.35–~2.5
+  return 0.85 + 0.18 * Math.log10(1 + a);   // 0.85–~1.6×
 }
-function altitudeFor(atoll) {
-  const a = atoll.area_km2 || 0.1;
-  return 0.012 + 0.022 * Math.log10(1 + a); // 0.012–~0.10
+
+// SVG teardrop pin — sized to ~30px tall at scale=1
+function pinSvg(atoll, color) {
+  const s = pinScaleFor(atoll);
+  const w = 22 * s, h = 30 * s;
+  return `
+    <div class="atoll-pin" data-atoll="${atoll.name.replace(/"/g, "&quot;")}"
+         style="color:${color};width:${w}px;height:${h}px;">
+      <svg viewBox="0 0 22 30" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+        <path class="atoll-pin__core"
+              d="M11 0 C5 0, 1 4.2, 1 10.3 C1 18, 11 30, 11 30 C11 30, 21 18, 21 10.3 C21 4.2, 17 0, 11 0 Z"
+              fill="${color}" fill-opacity="0.92"/>
+        <circle class="atoll-pin__dot" cx="11" cy="10.4" r="2.6"/>
+      </svg>
+    </div>`;
 }
 
 // ---- Tooltip -------------------------------------------------
@@ -173,13 +184,29 @@ function initGlobe() {
     .showAtmosphere(true)
     .atmosphereColor(ATMO_COLOR)
     .atmosphereAltitude(0.20)
-    .pointAltitude(d => altitudeFor(d))
-    .pointRadius(d => radiusFor(d))
-    .pointColor(d => colorFor(d, state.colorMode))
-    .pointResolution(10)
-    .pointLabel(() => "")
-    .onPointHover(handleHover)
-    .onPointClick(handleClick);
+    .htmlElementsData([])
+    .htmlAltitude(0.01)
+    .htmlElement(d => {
+      const wrap = document.createElement("div");
+      wrap.innerHTML = pinSvg(d, colorFor(d, state.colorMode));
+      const pin = wrap.firstElementChild;
+      pin.addEventListener("pointerenter", e => {
+        pin.classList.add("is-active");
+        showTip(d, e.clientX, e.clientY);
+      });
+      pin.addEventListener("pointermove", e => {
+        if (tt.classList.contains("is-open")) placeTip(e.clientX, e.clientY);
+      });
+      pin.addEventListener("pointerleave", () => {
+        pin.classList.remove("is-active");
+        hideTip();
+      });
+      pin.addEventListener("click", e => {
+        e.stopPropagation();
+        handleClick(d);
+      });
+      return pin;
+    });
 
   // Globe sphere — lifted enough off black to actually read as a globe
   const gm = world.globeMaterial();
@@ -224,41 +251,29 @@ function initGlobe() {
   new ResizeObserver(sync).observe(stage);
   window.addEventListener("orientationchange", () => setTimeout(sync, 250));
 
-  world.pointOfView({ lat: 5, lng: 160, altitude: 2.4 }, 0);
+  // Start framed on the Indo-Pacific atoll belt (Maldives → Marshall Islands)
+  world.pointOfView({ lat: 5, lng: 105, altitude: 2.0 }, 0);
   console.log(`[globe] ready, ${state.filtered.length} points to draw`);
 }
 
 function refreshGlobe() {
   if (!world) return;
-  world.pointsData(state.filtered)
-       .pointColor(d => colorFor(d, state.colorMode))
-       .pointAltitude(d => altitudeFor(d))
-       .pointRadius(d => radiusFor(d));
+  // Pass a fresh array so Globe.gl tears down/rebuilds DOM elements,
+  // picking up colour-mode changes through the htmlElement callback
+  world.htmlElementsData([...state.filtered]);
 }
-
-function handleHover(point) {
-  if (point) {
-    document.body.style.cursor = "pointer";
-    const e = window.event;
-    showTip(point, (e?.clientX ?? 100), (e?.clientY ?? 100));
-  } else {
-    document.body.style.cursor = "default";
-    hideTip();
-  }
-}
-
-document.addEventListener("mousemove", e => {
-  if (tt.classList.contains("is-open")) placeTip(e.clientX, e.clientY);
-});
 
 function handleClick(point) {
-  if (!point) return;
+  if (!point || !world) return;
   state.pinned = point;
   world.controls().autoRotate = false;
-  world.pointOfView({ lat: point.lat, lng: point.lon, altitude: 1.4 }, 1400);
+  world.pointOfView({ lat: point.lat, lng: point.lon, altitude: 1.2 }, 1400);
   renderDetail(point);
-  // On mobile, slide the detail tray up
   document.body.classList.add("has-pinned");
+  // On mobile, open the detail tray automatically
+  if (window.matchMedia("(max-width: 800px)").matches) {
+    openTray("rail-right");
+  }
 }
 
 // ---- Filters UI ----------------------------------------------
@@ -268,15 +283,16 @@ function buildChips() {
     state.raw.some(a => a.region === r)
   );
   wrap.innerHTML = regions.map(r => `
-    <button class="chip" data-region="${r}">
+    <button class="chip" data-region="${r}" aria-pressed="false">
       <span class="chip__swatch" style="background:${REGION_COLORS[r]}"></span>${r}
     </button>`).join("");
   wrap.querySelectorAll(".chip").forEach(btn => {
     btn.addEventListener("click", () => {
       const r = btn.dataset.region;
-      if (state.activeRegions.has(r)) state.activeRegions.delete(r);
-      else state.activeRegions.add(r);
-      btn.classList.toggle("is-on");
+      const on = !state.activeRegions.has(r);
+      if (on) state.activeRegions.add(r); else state.activeRegions.delete(r);
+      btn.classList.toggle("is-on", on);
+      btn.setAttribute("aria-pressed", String(on));
       applyFilters();
     });
   });
@@ -299,32 +315,76 @@ function bindControls() {
 
   document.querySelectorAll("#color-mode button").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll("#color-mode button")
-              .forEach(b => b.classList.remove("is-active"));
+      document.querySelectorAll("#color-mode button").forEach(b => {
+        b.classList.remove("is-active");
+        b.setAttribute("aria-checked", "false");
+      });
       btn.classList.add("is-active");
+      btn.setAttribute("aria-checked", "true");
       state.colorMode = btn.dataset.mode;
       refreshGlobe();
       buildLegend();
     });
   });
 
-  // Mobile tray toggles
+  // Mobile tray toggles + scrim + close buttons
+  const scrim = document.getElementById("scrim");
+
   document.querySelectorAll("[data-toggle]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const target = document.getElementById(btn.dataset.toggle);
-      target?.classList.toggle("is-open");
-      btn.classList.toggle("is-active");
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const id = btn.dataset.toggle;
+      const target = document.getElementById(id);
+      const willOpen = !target.classList.contains("is-open");
+      // Close any other open tray first
+      document.querySelectorAll(".rail.is-open").forEach(r => {
+        if (r !== target) r.classList.remove("is-open");
+      });
+      document.querySelectorAll(".tray-toggle.is-active").forEach(t => {
+        if (t !== btn) t.classList.remove("is-active");
+      });
+      target.classList.toggle("is-open", willOpen);
+      btn.classList.toggle("is-active", willOpen);
+      btn.setAttribute("aria-expanded", String(willOpen));
+      scrim.classList.toggle("is-open", willOpen);
     });
   });
 
-  // Tap outside detail panel to dismiss on mobile
-  document.addEventListener("click", e => {
-    if (!e.target.closest(".rail--right") &&
-        !e.target.closest("#globe") &&
-        document.body.classList.contains("has-pinned")) {
-      // ignore outside-globe clicks for now
-    }
+  // Explicit close buttons inside each rail
+  document.querySelectorAll("[data-close]").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      closeAllTrays();
+    });
   });
+
+  // Tap on scrim closes any open tray
+  scrim.addEventListener("click", closeAllTrays);
+
+  // ESC closes any open tray
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeAllTrays();
+  });
+}
+
+function openTray(id) {
+  const target = document.getElementById(id);
+  const btn = document.querySelector(`[data-toggle="${id}"]`);
+  target?.classList.add("is-open");
+  btn?.classList.add("is-active");
+  btn?.setAttribute("aria-expanded", "true");
+  document.getElementById("scrim")?.classList.add("is-open");
+}
+
+function closeAllTrays() {
+  document.querySelectorAll(".rail.is-open")
+          .forEach(r => r.classList.remove("is-open"));
+  document.querySelectorAll(".tray-toggle.is-active")
+          .forEach(t => {
+            t.classList.remove("is-active");
+            t.setAttribute("aria-expanded", "false");
+          });
+  document.getElementById("scrim")?.classList.remove("is-open");
 }
 
 function buildLegend() {
