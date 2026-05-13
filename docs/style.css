@@ -533,9 +533,17 @@ input[type=range]::-moz-range-thumb {
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.55));
   transition: filter .15s ease;
 }
-.atoll-pin svg { transition: transform .15s ease; transform-origin: 50% 100%; }
+/* viewBox has the dot at cy=10.4 of 30 (35% from top). Globe.gl centres
+   the wrapper on the lat/lng, so we shift the SVG down ~15% to align
+   the dot with the wrapper centre — that puts the dot ON the atoll. */
+.atoll-pin svg {
+  transition: transform .15s ease;
+  transform-origin: 50% 35%;
+  transform: translateY(15%);
+  overflow: visible;
+}
 .atoll-pin:hover svg,
-.atoll-pin.is-active svg { transform: scale(1.35); }
+.atoll-pin.is-active svg { transform: translateY(15%) scale(1.4); }
 .atoll-pin:hover,
 .atoll-pin.is-active {
   filter: drop-shadow(0 0 14px currentColor)

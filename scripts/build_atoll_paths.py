@@ -98,8 +98,8 @@ GIS_RAW = ROOT / "references/gis_raw"
 ATOLLS_JSON = ROOT / "docs/data/atolls.json"
 OUT = ROOT / "docs/data/atoll-paths.json"
 
-MIN_AREA_KM2 = 50          # atolls smaller than this become pins-only
-MAX_POINTS = 20            # vertices per path (cheap to render)
+MIN_AREA_KM2 = 0           # include every matched atoll, however small
+MAX_POINTS = 16            # vertices per path (cheap to render)
 COORD_DECIMALS = 4         # ~11 m
 
 

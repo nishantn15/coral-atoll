@@ -77,16 +77,17 @@ function pinScaleFor(atoll) {
   return 0.85 + 0.18 * Math.log10(1 + a);   // 0.85–~1.6×
 }
 
-// SVG teardrop pin — sized ~30px tall at scale=1; margin offset
-// anchors the *tip* of the pin at the atoll coordinate (Globe.gl
-// positions the element's top-left at that point).
+// SVG teardrop pin. Globe.gl centres each html element on the target
+// lat/lng via translate(-50%, -50%), so the pin's bounding-box centre
+// is anchored to the coordinate. We draw the pin so the dot (cx=11,
+// cy=10.4 in SVG space) sits at the bounding-box centre — that dot
+// is what the user reads as the atoll's position.
 function pinSvg(atoll, color) {
   const s = pinScaleFor(atoll);
   const w = 22 * s, h = 30 * s;
   return `
     <div class="atoll-pin" data-atoll="${atoll.name.replace(/"/g, "&quot;")}"
-         style="color:${color};width:${w}px;height:${h}px;
-                margin-left:${-w/2}px;margin-top:${-h}px;">
+         style="color:${color};width:${w}px;height:${h}px;">
       <svg viewBox="0 0 22 30" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
         <path class="atoll-pin__core"
               d="M11 0 C5 0, 1 4.2, 1 10.3 C1 18, 11 30, 11 30 C11 30, 21 18, 21 10.3 C21 4.2, 17 0, 11 0 Z"
@@ -293,22 +294,42 @@ function initGlobe() {
 function refreshGlobe() {
   if (!world) return;
   // Pass FRESH OBJECT REFERENCES so Globe.gl's html-layer can't
-  // shortcut on identity. Without this, filtering reduces the array
-  // but Globe.gl keeps the original DOM nodes for unchanged refs —
-  // the UI changes don't propagate to the globe.
+  // shortcut on identity.
   const fresh = state.filtered.map(a => ({ ...a }));
   world.htmlElementsData(fresh);
+
+  // Globe.gl only invokes htmlElement() for NEW elements. For colour-
+  // mode swaps the pin DOM stays the same — we have to repaint each
+  // pin's `color` inline ourselves.
   requestAnimationFrame(() => {
+    document.querySelectorAll(".atoll-pin").forEach(pin => {
+      const name = pin.dataset.atoll;
+      const atoll = state.raw.find(a => a.name === name);
+      if (atoll) pin.style.color = colorFor(atoll, state.colorMode);
+    });
     const n = document.querySelectorAll(".atoll-pin").length;
     console.log(`[globe] requested ${fresh.length} pins; ${n} in DOM`);
   });
+
+  // Repaint atoll-rim paths too if Globe.gl exposes them
+  if (world.pathColor) {
+    world.pathColor(p =>
+      [REGION_COLORS[p.region] || "#ff7964",
+       "rgba(255,212,160,0.0)"]);
+  }
 }
 
 function handleClick(point) {
   if (!point || !world) return;
   state.pinned = point;
   world.controls().autoRotate = false;
-  world.pointOfView({ lat: point.lat, lng: point.lon, altitude: 1.2 }, 1400);
+  // Preserve the user's current zoom — they manually zoomed in to look
+  // around, don't yank them back out. Pan only.
+  const current = world.pointOfView();
+  world.pointOfView(
+    { lat: point.lat, lng: point.lon, altitude: current.altitude },
+    900
+  );
   renderDetail(point);
   document.body.classList.add("has-pinned");
   // On mobile, open the detail tray automatically
