@@ -226,43 +226,41 @@ function initGlobe() {
   ctl.enableDamping   = true;
   ctl.dampingFactor   = 0.08;
 
-  // Polygon layer: countries + atoll reef rims combined.
-  // Each feature carries a `_kind` discriminator so the colour callbacks
-  // can paint countries one way and atoll outlines another.
-  Promise.all([
-    fetch("https://cdn.jsdelivr.net/npm/three-globe/example/country-polygons/ne_110m_admin_0_countries.geojson")
-      .then(r => r.ok ? r.json() : { features: [] })
-      .catch(() => ({ features: [] })),
-    fetch("data/atoll-polygons.json")
-      .then(r => r.ok ? r.json() : { features: [] })
-      .catch(() => ({ features: [] })),
-  ]).then(([countries, atolls]) => {
-    const cFeats = countries.features.map(f => ({
-      ...f, properties: { ...(f.properties || {}), _kind: "country" }
-    }));
-    const aFeats = atolls.features.map(f => ({
-      ...f, properties: { ...(f.properties || {}), _kind: "atoll" }
-    }));
-    const combined = [...cFeats, ...aFeats];
-    world
-      .polygonsData(combined)
-      .polygonCapColor(f =>
-        f.properties._kind === "atoll"
-          ? "rgba(255,121,100,0.55)"
-          : COUNTRY_FILL)
-      .polygonSideColor(f =>
-        f.properties._kind === "atoll"
-          ? "rgba(255,121,100,0.15)"
-          : "rgba(243,232,207,0.04)")
-      .polygonStrokeColor(f =>
-        f.properties._kind === "atoll"
-          ? "rgba(255,212,160,0.85)"
-          : COUNTRY_STROKE)
-      .polygonAltitude(f =>
-        f.properties._kind === "atoll" ? 0.008 : 0.005)
-      .polygonLabel(() => "");
-    console.log(`[globe] polygons: ${cFeats.length} countries + ${aFeats.length} atolls`);
-  });
+  // Country outlines (cheap — small dataset, low extrusion)
+  fetch("https://cdn.jsdelivr.net/npm/three-globe/example/country-polygons/ne_110m_admin_0_countries.geojson")
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(geo => {
+      world.polygonsData(geo.features)
+           .polygonCapColor(()    => COUNTRY_FILL)
+           .polygonSideColor(()   => "rgba(243,232,207,0.04)")
+           .polygonStrokeColor(() => COUNTRY_STROKE)
+           .polygonAltitude(0.005)
+           .polygonLabel(() => "");
+      console.log(`[globe] countries loaded: ${geo.features.length}`);
+    })
+    .catch(err => console.warn("[globe] country outlines failed:", err));
+
+  // Atoll reef-rim outlines via the LIGHTWEIGHT pathsData layer.
+  // Each path is a tube along the rim — far cheaper than extruded
+  // polygons. Source file is ~100 KB and limited to atolls ≥50 km².
+  fetch("data/atoll-paths.json")
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(data => {
+      world.pathsData(data.paths)
+           .pathPoints("coords")
+           .pathPointLat(p => p[0])
+           .pathPointLng(p => p[1])
+           .pathPointAlt(0.006)
+           .pathColor(p =>
+             [REGION_COLORS[p.region] || "#ff7964",
+              "rgba(255,212,160,0.0)"])     // fade tail for a halo feel
+           .pathStroke(1.4)
+           .pathDashLength(1)
+           .pathDashGap(0)
+           .pathTransitionDuration(0);
+      console.log(`[globe] atoll paths loaded: ${data.paths.length}`);
+    })
+    .catch(err => console.warn("[globe] atoll paths failed:", err));
 
   let resumeTimer;
   ctl.addEventListener("start", () => { clearTimeout(resumeTimer); ctl.autoRotate = false; });
