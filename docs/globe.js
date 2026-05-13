@@ -77,13 +77,16 @@ function pinScaleFor(atoll) {
   return 0.85 + 0.18 * Math.log10(1 + a);   // 0.85–~1.6×
 }
 
-// SVG teardrop pin — sized to ~30px tall at scale=1
+// SVG teardrop pin — sized ~30px tall at scale=1; margin offset
+// anchors the *tip* of the pin at the atoll coordinate (Globe.gl
+// positions the element's top-left at that point).
 function pinSvg(atoll, color) {
   const s = pinScaleFor(atoll);
   const w = 22 * s, h = 30 * s;
   return `
     <div class="atoll-pin" data-atoll="${atoll.name.replace(/"/g, "&quot;")}"
-         style="color:${color};width:${w}px;height:${h}px;">
+         style="color:${color};width:${w}px;height:${h}px;
+                margin-left:${-w/2}px;margin-top:${-h}px;">
       <svg viewBox="0 0 22 30" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
         <path class="atoll-pin__core"
               d="M11 0 C5 0, 1 4.2, 1 10.3 C1 18, 11 30, 11 30 C11 30, 21 18, 21 10.3 C21 4.2, 17 0, 11 0 Z"
@@ -185,6 +188,8 @@ function initGlobe() {
     .atmosphereColor(ATMO_COLOR)
     .atmosphereAltitude(0.20)
     .htmlElementsData([])
+    .htmlLat("lat")
+    .htmlLng("lon")              // *** our JSON uses `lon`, Globe.gl's default is `lng` ***
     .htmlAltitude(0.01)
     .htmlElement(d => {
       const wrap = document.createElement("div");
@@ -261,6 +266,12 @@ function refreshGlobe() {
   // Pass a fresh array so Globe.gl tears down/rebuilds DOM elements,
   // picking up colour-mode changes through the htmlElement callback
   world.htmlElementsData([...state.filtered]);
+  // Diagnostics: how many pins actually ended up in the DOM
+  requestAnimationFrame(() => {
+    const n = document.querySelectorAll(".atoll-pin").length;
+    console.log(`[globe] requested ${state.filtered.length} pins; ` +
+                `${n} .atoll-pin nodes in DOM`);
+  });
 }
 
 function handleClick(point) {

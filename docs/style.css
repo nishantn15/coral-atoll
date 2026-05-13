@@ -528,13 +528,16 @@ input[type=range]::-moz-range-thumb {
 .atoll-pin {
   pointer-events: auto;
   cursor: pointer;
-  transform: translate(-50%, -100%);
+  /* No transform here — Globe.gl sets one to position us; we use
+     margin-left / margin-top inline to anchor the pin tip on the atoll. */
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.55));
-  transition: transform .15s ease, filter .15s ease;
+  transition: filter .15s ease;
 }
+.atoll-pin svg { transition: transform .15s ease; transform-origin: 50% 100%; }
+.atoll-pin:hover svg,
+.atoll-pin.is-active svg { transform: scale(1.35); }
 .atoll-pin:hover,
 .atoll-pin.is-active {
-  transform: translate(-50%, -100%) scale(1.35);
   filter: drop-shadow(0 0 14px currentColor)
           drop-shadow(0 2px 4px rgba(0,0,0,0.55));
   z-index: 5;
