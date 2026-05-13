@@ -1,0 +1,20 @@
+# Derived / extracted GIS staging — keep the regional zips, drop the unpacked tree
+references/gis_raw/extracted/
+
+# Local server droppings
+screenshots/.termux-browser-cli/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node — if we add a build step later
+node_modules/
+dist/
+
+# Editor
+.DS_Store
+.idea/
+.vscode/

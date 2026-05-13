@@ -1,0 +1,5 @@
+MCRMP/Statistics_Documentation/Atolls_Statistics-598.xlsx (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) 299440 bytes.
+MCRMP/Statistics_Documentation/Andrefouet_2023_dataset_readme.txt (text/plain) 877 bytes.
+MCRMP/Statistics_Documentation/Lat-Long_atolls-598.csv (text/csv) 23852 bytes.
+MCRMP/Statistics_Documentation/Millennium-Codes-Reefbase-2023-Atoll-Codes.xlsx (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) 16574 bytes.
+MCRMP/Statistics_Documentation/Readme.txt (text/plain) 677 bytes.
