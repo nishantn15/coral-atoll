@@ -19,7 +19,7 @@ STATS_DIR = ROOT / "references/dataverse_files/MCRMP/Statistics_Documentation"
 LATLON = STATS_DIR / "Lat-Long_atolls-598.csv"
 STATS = STATS_DIR / "Atolls_Statistics-598.xlsx"
 CODES = STATS_DIR / "Millennium-Codes-Reefbase-2023-Atoll-Codes.xlsx"
-OUT = ROOT / "web/data/atolls.json"
+OUT = ROOT / "docs/data/atolls.json"
 OUT_PROCESSED = ROOT / "data/processed/atolls.json"
 
 L4_UNIT_FIX = {"Taka Garlarang", "Cato Reef"}  # rows stored in m², divide by 1e6

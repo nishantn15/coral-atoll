@@ -17,7 +17,7 @@ License: **CC BY-NC-SA 4.0** for everything in the repo. See `LICENSE.md`.
 
 ```
 coral-atoll/
-├── web/                        # Static GitHub-Pages-ready site
+├── docs/                       # Static GitHub-Pages-ready site (served at /coral-atoll)
 │   ├── index.html
 │   ├── style.css
 │   ├── globe.js                # Globe.gl + d3 driver
@@ -51,18 +51,19 @@ A 3D Globe.gl visualisation of all 597 atolls. Points are sized by total km²
 continental origin. Hover for a tooltip; click an atoll to pin its full L4-class
 breakdown in the right rail.
 
+**Live site:** <https://nishantn15.github.io/coral-atoll/>
+
 To preview locally:
 
 ```bash
-cd web
+cd docs
 python3 -m http.server 8000
 # then open http://localhost:8000 in any WebGL-capable browser
 ```
 
-To publish on **GitHub Pages**: push this repo, then in *Settings → Pages*
-point the source at `main` branch, folder `/web`. Globe.gl, Three.js, and the
-country outlines come from public CDNs (jsdelivr / unpkg) — no build step
-required.
+GitHub Pages is configured to serve from `main` branch, folder `/docs`.
+Globe.gl, Three.js, and the country outlines come from public CDNs
+(jsdelivr / unpkg) — no build step required.
 
 The first-pass design is a deep-sea editorial atlas: Fraunces display italics,
 IBM Plex Mono data labels, abyssal navy + coral + brass palette, slow auto-rotate
@@ -77,7 +78,7 @@ is a graceful fallback. The globe itself renders in any normal browser.)*
 
 ## The cleaned dataset
 
-`web/data/atolls.json` is the single canonical join of:
+`docs/data/atolls.json` is the single canonical join of:
 
 1. **Statistics — `Atolls_Statistics-598.xlsx`** (DataSuds OKTEFB)
    - sheet *L5 km2*: km² per L5 geomorphological code per atoll
