@@ -226,19 +226,43 @@ function initGlobe() {
   ctl.enableDamping   = true;
   ctl.dampingFactor   = 0.08;
 
-  // Country outline overlay
-  fetch("https://cdn.jsdelivr.net/npm/three-globe/example/country-polygons/ne_110m_admin_0_countries.geojson")
-    .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(geo => {
-      world
-        .polygonsData(geo.features)
-        .polygonCapColor(()    => COUNTRY_FILL)
-        .polygonSideColor(()   => "rgba(243,232,207,0.04)")
-        .polygonStrokeColor(() => COUNTRY_STROKE)
-        .polygonAltitude(0.005);
-      console.log(`[globe] countries loaded: ${geo.features.length}`);
-    })
-    .catch(err => console.warn("[globe] country outlines failed:", err));
+  // Polygon layer: countries + atoll reef rims combined.
+  // Each feature carries a `_kind` discriminator so the colour callbacks
+  // can paint countries one way and atoll outlines another.
+  Promise.all([
+    fetch("https://cdn.jsdelivr.net/npm/three-globe/example/country-polygons/ne_110m_admin_0_countries.geojson")
+      .then(r => r.ok ? r.json() : { features: [] })
+      .catch(() => ({ features: [] })),
+    fetch("data/atoll-polygons.json")
+      .then(r => r.ok ? r.json() : { features: [] })
+      .catch(() => ({ features: [] })),
+  ]).then(([countries, atolls]) => {
+    const cFeats = countries.features.map(f => ({
+      ...f, properties: { ...(f.properties || {}), _kind: "country" }
+    }));
+    const aFeats = atolls.features.map(f => ({
+      ...f, properties: { ...(f.properties || {}), _kind: "atoll" }
+    }));
+    const combined = [...cFeats, ...aFeats];
+    world
+      .polygonsData(combined)
+      .polygonCapColor(f =>
+        f.properties._kind === "atoll"
+          ? "rgba(255,121,100,0.55)"
+          : COUNTRY_FILL)
+      .polygonSideColor(f =>
+        f.properties._kind === "atoll"
+          ? "rgba(255,121,100,0.15)"
+          : "rgba(243,232,207,0.04)")
+      .polygonStrokeColor(f =>
+        f.properties._kind === "atoll"
+          ? "rgba(255,212,160,0.85)"
+          : COUNTRY_STROKE)
+      .polygonAltitude(f =>
+        f.properties._kind === "atoll" ? 0.008 : 0.005)
+      .polygonLabel(() => "");
+    console.log(`[globe] polygons: ${cFeats.length} countries + ${aFeats.length} atolls`);
+  });
 
   let resumeTimer;
   ctl.addEventListener("start", () => { clearTimeout(resumeTimer); ctl.autoRotate = false; });
@@ -263,14 +287,15 @@ function initGlobe() {
 
 function refreshGlobe() {
   if (!world) return;
-  // Pass a fresh array so Globe.gl tears down/rebuilds DOM elements,
-  // picking up colour-mode changes through the htmlElement callback
-  world.htmlElementsData([...state.filtered]);
-  // Diagnostics: how many pins actually ended up in the DOM
+  // Pass FRESH OBJECT REFERENCES so Globe.gl's html-layer can't
+  // shortcut on identity. Without this, filtering reduces the array
+  // but Globe.gl keeps the original DOM nodes for unchanged refs —
+  // the UI changes don't propagate to the globe.
+  const fresh = state.filtered.map(a => ({ ...a }));
+  world.htmlElementsData(fresh);
   requestAnimationFrame(() => {
     const n = document.querySelectorAll(".atoll-pin").length;
-    console.log(`[globe] requested ${state.filtered.length} pins; ` +
-                `${n} .atoll-pin nodes in DOM`);
+    console.log(`[globe] requested ${fresh.length} pins; ${n} in DOM`);
   });
 }
 
