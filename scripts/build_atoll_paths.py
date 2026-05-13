@@ -14,6 +14,7 @@ enough for mobile WebGL.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -22,6 +23,75 @@ import zipfile
 from pathlib import Path
 
 import shapefile
+
+
+# ---------------------------------------------------------------
+# Pure-Python inverse Transverse Mercator (Snyder, USGS 1987).
+# A handful of MCRMP shapefiles are stored in projected UTM (e.g.
+# Indonesia, French Polynesia archipelagos) rather than geographic
+# WGS84 — pyproj won't install on Termux so we reproject by hand.
+# ---------------------------------------------------------------
+
+WGS84_A  = 6378137.0
+WGS84_F  = 1 / 298.257223563
+WGS84_E2 = WGS84_F * (2 - WGS84_F)              # eccentricity squared
+
+PRJ_NUM_RE = re.compile(r'PARAMETER\["([^"]+)",([-0-9.eE]+)\]')
+
+
+def parse_prj(prj_text: str) -> dict | None:
+    """Return a dict of {is_projected, central_meridian_deg, false_easting,
+    false_northing, scale_factor, projection}. Returns None for GEOGCS-only
+    files (already WGS84 lon/lat — no transform needed)."""
+    if not prj_text.startswith("PROJCS"):
+        return None
+    proj_match = re.search(r'PROJECTION\["([^"]+)"\]', prj_text)
+    if not proj_match or "Transverse_Mercator" not in proj_match.group(1):
+        return {"unsupported": True, "projection": proj_match.group(1) if proj_match else "?"}
+    params = {k: float(v) for k, v in PRJ_NUM_RE.findall(prj_text)}
+    return {
+        "projection": "Transverse_Mercator",
+        "lat_0": math.radians(params.get("latitude_of_origin", 0.0)),
+        "lon_0": math.radians(params.get("central_meridian", 0.0)),
+        "k_0":   params.get("scale_factor", 1.0),
+        "fe":    params.get("false_easting", 0.0),
+        "fn":    params.get("false_northing", 0.0),
+    }
+
+
+def inverse_tm(x: float, y: float, p: dict) -> tuple[float, float]:
+    """Snyder eqs 8-1 to 8-3 + 7-1: inverse Transverse Mercator on WGS84.
+    Returns (lon_deg, lat_deg)."""
+    a, e2 = WGS84_A, WGS84_E2
+    M = (y - p["fn"]) / p["k_0"]
+    mu = M / (a * (1 - e2/4 - 3*e2**2/64 - 5*e2**3/256))
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    phi1 = (mu
+            + (3*e1/2 - 27*e1**3/32) * math.sin(2*mu)
+            + (21*e1**2/16 - 55*e1**4/32) * math.sin(4*mu)
+            + (151*e1**3/96) * math.sin(6*mu)
+            + (1097*e1**4/512) * math.sin(8*mu))
+    eprime2 = e2 / (1 - e2)
+    sinp, cosp, tanp = math.sin(phi1), math.cos(phi1), math.tan(phi1)
+    C1 = eprime2 * cosp**2
+    T1 = tanp**2
+    N1 = a / math.sqrt(1 - e2*sinp**2)
+    R1 = a*(1 - e2) / (1 - e2*sinp**2)**1.5
+    D  = (x - p["fe"]) / (N1 * p["k_0"])
+
+    lat = phi1 - (N1*tanp/R1) * (
+        D**2/2
+        - (5 + 3*T1 + 10*C1 - 4*C1**2 - 9*eprime2) * D**4/24
+        + (61 + 90*T1 + 298*C1 + 45*T1**2 - 252*eprime2 - 3*C1**2) * D**6/720)
+    lon = p["lon_0"] + (
+        D
+        - (1 + 2*T1 + C1) * D**3/6
+        + (5 - 2*C1 + 28*T1 - 3*C1**2 + 8*eprime2 + 24*T1**2) * D**5/120) / cosp
+    return math.degrees(lon), math.degrees(lat)
+
+
+def valid_lonlat(x: float, y: float) -> bool:
+    return -180.0 <= x <= 180.0 and -90.0 <= y <= 90.0
 
 ROOT = Path("/storage/emulated/0/Download/coral-atoll")
 GIS_RAW = ROOT / "references/gis_raw"
@@ -73,11 +143,20 @@ def decimate(pts, n):
 
 def largest_rim_ring(shp_path: Path) -> list[tuple] | None:
     """Return the outer boundary ring of the largest L3='Atoll rim'
-    polygon in this shapefile, or None if no rim found."""
+    polygon in this shapefile, reprojected to WGS84 lon/lat if the
+    accompanying .prj file specifies a Transverse Mercator UTM zone."""
     try:
         sf = shapefile.Reader(str(shp_path.with_suffix("")))
     except Exception:
         return None
+    # Inspect the .prj
+    prj_path = shp_path.with_suffix(".prj")
+    proj_info = None
+    if prj_path.exists():
+        try:
+            proj_info = parse_prj(prj_path.read_text())
+        except Exception:
+            proj_info = None
     best = None
     best_extent = -1.0
     for rec, shp in zip(sf.records(), sf.shapes()):
@@ -95,6 +174,14 @@ def largest_rim_ring(shp_path: Path) -> list[tuple] | None:
                 best_extent = ext
                 best = ring
     sf.close()
+    if not best:
+        return None
+    # Reproject if needed
+    if proj_info and proj_info.get("projection") == "Transverse_Mercator":
+        best = [inverse_tm(x, y, proj_info) for x, y in best]
+    elif proj_info and proj_info.get("unsupported"):
+        # Unknown projection (rare in this dataset) — bail; caller will skip
+        return None
     return best
 
 
@@ -136,15 +223,18 @@ def main() -> None:
                     ring = decimate(ring, MAX_POINTS)
                     ring = [(round(x, COORD_DECIMALS), round(y, COORD_DECIMALS))
                             for x, y in ring]
-                    # close
+                    if not all(valid_lonlat(x, y) for x, y in ring):
+                        # Safety net: a vertex is still outside [-180,180]/[-90,90]
+                        # — drop the whole path rather than corrupt the globe.
+                        print(f"    [drop] {shp.stem}: out-of-range coord "
+                              f"e.g. {ring[0]}")
+                        continue
                     if ring[0] != ring[-1]:
                         ring = ring + [ring[0]]
                     paths.append({
                         "name": atoll["name"],
                         "region": atoll.get("region"),
                         "area_km2": atoll.get("area_km2"),
-                        # Globe.gl pathsData wants [lat, lng] tuples.
-                        # Our shapefile coords are (lon, lat) — swap.
                         "coords": [[lat, lon] for lon, lat in ring],
                     })
                     n_kept += 1

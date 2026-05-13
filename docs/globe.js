@@ -243,24 +243,31 @@ function initGlobe() {
   // Atoll reef-rim outlines via the LIGHTWEIGHT pathsData layer.
   // Each path is a tube along the rim — far cheaper than extruded
   // polygons. Source file is ~100 KB and limited to atolls ≥50 km².
-  fetch("data/atoll-paths.json")
-    .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(data => {
-      world.pathsData(data.paths)
-           .pathPoints("coords")
-           .pathPointLat(p => p[0])
-           .pathPointLng(p => p[1])
-           .pathPointAlt(0.006)
-           .pathColor(p =>
-             [REGION_COLORS[p.region] || "#ff7964",
-              "rgba(255,212,160,0.0)"])     // fade tail for a halo feel
-           .pathStroke(1.4)
-           .pathDashLength(1)
-           .pathDashGap(0)
-           .pathTransitionDuration(0);
-      console.log(`[globe] atoll paths loaded: ${data.paths.length}`);
-    })
-    .catch(err => console.warn("[globe] atoll paths failed:", err));
+  // Emergency escape hatch: append `?outlines=0` to skip this layer.
+  const skipOutlines =
+    new URLSearchParams(location.search).get("outlines") === "0";
+  if (!skipOutlines) {
+    fetch("data/atoll-paths.json")
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        world.pathsData(data.paths)
+             .pathPoints("coords")
+             .pathPointLat(p => p[0])
+             .pathPointLng(p => p[1])
+             .pathPointAlt(0.006)
+             .pathColor(p =>
+               [REGION_COLORS[p.region] || "#ff7964",
+                "rgba(255,212,160,0.0)"])
+             .pathStroke(1.4)
+             .pathDashLength(1)
+             .pathDashGap(0)
+             .pathTransitionDuration(0);
+        console.log(`[globe] atoll paths loaded: ${data.paths.length}`);
+      })
+      .catch(err => console.warn("[globe] atoll paths failed:", err));
+  } else {
+    console.log("[globe] paths layer disabled via ?outlines=0");
+  }
 
   let resumeTimer;
   ctl.addEventListener("start", () => { clearTimeout(resumeTimer); ctl.autoRotate = false; });
@@ -456,6 +463,22 @@ function buildLegend() {
   }
 }
 
+// ---- Viewport insets (mobile browser chrome) ----------------
+// Samsung Internet / Chrome Android can put a navigation bar at the
+// BOTTOM of the screen that env(safe-area-inset-bottom) doesn't catch.
+// visualViewport.height excludes that chrome, so the difference vs
+// window.innerHeight is the chrome height we need to clear.
+function syncViewportInsets() {
+  if (!window.visualViewport) return;
+  const vv = window.visualViewport;
+  const gap = Math.max(0,
+    window.innerHeight - vv.height - vv.offsetTop);
+  document.documentElement.style.setProperty("--vv-bottom", `${gap}px`);
+}
+window.addEventListener("resize", syncViewportInsets);
+window.visualViewport?.addEventListener("resize", syncViewportInsets);
+window.visualViewport?.addEventListener("scroll", syncViewportInsets);
+
 // ---- WebGL probe ---------------------------------------------
 function hasWebGL() {
   try {
@@ -479,6 +502,7 @@ function showWebGLFallback() {
 
 // ---- Bootstrap -----------------------------------------------
 async function main() {
+  syncViewportInsets();
   const res = await fetch("data/atolls.json");
   const payload = await res.json();
   state.raw = payload.atolls.map(a => ({

@@ -684,12 +684,17 @@ input[type=range]::-moz-range-thumb {
   .scrim { display: block; pointer-events: none; }
   .scrim.is-open { pointer-events: auto; }
 
-  /* Floating tray toggle buttons — lifted off the mobile bottom chrome
-     (address bar / nav bar) so they always stay tappable. */
+  /* Floating tray toggle buttons.
+     The bottom offset stacks three signals so we clear Samsung Internet's
+     bottom navigation toolbar (which env(safe-area-inset-bottom) misses):
+       - var(--vv-bottom): live difference between innerHeight and
+                            visualViewport.height set from JS
+       - env(safe-area-inset-bottom): notch / home indicator (iOS)
+       - 14px static breathing room */
   .tray-toggle {
     display: inline-flex; align-items: center; gap: 6px;
     position: fixed;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    bottom: calc(var(--vv-bottom, 0px) + env(safe-area-inset-bottom, 0px) + 14px);
     padding: 11px 16px;
     background: rgba(4,12,22,.92);
     backdrop-filter: blur(10px);
@@ -711,7 +716,7 @@ input[type=range]::-moz-range-thumb {
   .globe-stage__hud {
     position: fixed;
     left: 14px; right: 14px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+    bottom: calc(var(--vv-bottom, 0px) + env(safe-area-inset-bottom, 0px) + 68px);
     width: auto;
     justify-content: center;
     font-size: 10.5px;
