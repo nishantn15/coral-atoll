@@ -78,6 +78,7 @@
 
   <section class="globe-stage">
     <div id="globe"></div>
+
     <div class="globe-stage__hud">
       <span class="hud__count" id="hud-count">597</span>
       <span class="hud__label">visible atolls</span>
@@ -85,7 +86,18 @@
       <span class="hud__count" id="hud-area">0</span>
       <span class="hud__label">km² mapped</span>
     </div>
+
     <div class="globe-stage__hint">drag to rotate · scroll to zoom · click an atoll for the chart</div>
+
+    <!-- Mobile-only tray toggles -->
+    <button class="tray-toggle tray-toggle--filters" data-toggle="rail-left" aria-label="Filters">
+      <span class="tray-toggle__icon">⇕</span>
+      <span class="tray-toggle__text">Filters</span>
+    </button>
+    <button class="tray-toggle tray-toggle--detail" data-toggle="rail-right" aria-label="Detail">
+      <span class="tray-toggle__icon">↑</span>
+      <span class="tray-toggle__text">Atoll detail</span>
+    </button>
   </section>
 
   <aside class="rail rail--right" id="rail-right">
@@ -110,6 +122,6 @@
 <script src="https://unpkg.com/d3-interpolate@3.0.1/dist/d3-interpolate.min.js"></script>
 <script src="https://unpkg.com/d3-color@3.1.0/dist/d3-color.min.js"></script>
 <script src="https://unpkg.com/d3-format@3.1.0/dist/d3-format.min.js"></script>
-<script type="module" src="globe.js"></script>
+<script src="globe.js"></script>
 </body>
 </html>

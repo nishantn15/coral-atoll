@@ -3,7 +3,7 @@
 // Built on Globe.gl (Three.js) + d3-scale + d3-scale-chromatic
 // =============================================================
 
-const fmtKm2 = d3.format(",.0f");
+const fmtKm2  = d3.format(",.0f");
 const fmtSmall = d3.format(",.2f");
 
 const REGION_ORDER = [
@@ -30,6 +30,13 @@ const ORIGIN_COLORS = {
   unknown: "#7d7864",
 };
 
+// Globe surface palette (parchment land on indigo ocean)
+const COUNTRY_FILL   = "rgba(243,232,207,0.20)";
+const COUNTRY_STROKE = "rgba(243,232,207,0.55)";
+const OCEAN_COLOR    = "#173959";
+const OCEAN_EMISSIVE = "#0a1f33";
+const ATMO_COLOR     = "#7ed3ff";
+
 // ---- State ---------------------------------------------------
 const state = {
   raw: [],
@@ -55,30 +62,35 @@ function dominantOrigin(atoll) {
 }
 
 function colorFor(atoll, mode) {
-  if (mode === "region") return REGION_COLORS[atoll.region] || "#999";
-  if (mode === "origin") return ORIGIN_COLORS[atoll.origin] || ORIGIN_COLORS.unknown;
+  if (mode === "region")   return REGION_COLORS[atoll.region] || "#fff";
+  if (mode === "origin")   return ORIGIN_COLORS[atoll.origin] || ORIGIN_COLORS.unknown;
   if (mode === "richness") {
-    const n = atoll.l5_classes_n || 0;
-    const t = Math.min(1, n / 18);
-    return d3.interpolateMagma(0.15 + 0.7 * t);
+    const t = Math.min(1, (atoll.l5_classes_n || 0) / 18);
+    return d3.interpolateMagma(0.20 + 0.70 * t);
   }
   return "#fff";
 }
 
-function sizeFor(atoll) {
+// Bumped radii / altitudes so points are actually visible on a phone screen.
+// Globe.gl point units are fractions of globe radius.
+function radiusFor(atoll) {
   const a = atoll.area_km2 || 0.1;
-  // log scale for radius — gives small atolls a visible footprint without
-  // letting Great Chagos blot out half the planet
-  return 0.18 + 0.45 * Math.log10(1 + a);
+  return 0.35 + 0.55 * Math.log10(1 + a);   // 0.35–~2.5
 }
-
-function altFor(atoll) {
+function altitudeFor(atoll) {
   const a = atoll.area_km2 || 0.1;
-  return 0.005 + 0.012 * Math.log10(1 + a);
+  return 0.012 + 0.022 * Math.log10(1 + a); // 0.012–~0.10
 }
 
 // ---- Tooltip -------------------------------------------------
 const tt = document.getElementById("tooltip");
+function placeTip(x, y) {
+  const tw = 280, th = 200;
+  const px = Math.min(window.innerWidth  - tw - 12, x + 14);
+  const py = Math.min(window.innerHeight - th - 12, y + 14);
+  tt.style.left = Math.max(8, px) + "px";
+  tt.style.top  = Math.max(8, py) + "px";
+}
 function showTip(atoll, x, y) {
   tt.innerHTML = `
     <p class="tooltip__name">${atoll.name}</p>
@@ -90,8 +102,7 @@ function showTip(atoll, x, y) {
       <dt>Latitude</dt><dd>${atoll.lat?.toFixed(2)}°</dd>
       <dt>Longitude</dt><dd>${atoll.lon?.toFixed(2)}°</dd>
     </dl>`;
-  tt.style.left = x + "px";
-  tt.style.top  = y + "px";
+  placeTip(x, y);
   tt.classList.add("is-open");
 }
 function hideTip() { tt.classList.remove("is-open"); }
@@ -104,7 +115,6 @@ function renderDetail(atoll) {
       Click to pin its full geomorphological profile here.</p>`;
     return;
   }
-  // Sort L4 breakdown by area desc
   const bars = Object.entries(atoll.l4 || {})
     .sort(([, a], [, b]) => b - a);
   const maxV = bars.length ? bars[0][1] : 1;
@@ -157,68 +167,73 @@ function refreshHud() {
 // ---- Globe ---------------------------------------------------
 let world;
 function initGlobe() {
-  world = Globe()
-    (document.getElementById("globe"))
+  const el = document.getElementById("globe");
+  world = Globe()(el)
     .backgroundColor("rgba(0,0,0,0)")
-    .globeImageUrl(null)             // we draw our own globe
     .showAtmosphere(true)
-    .atmosphereColor("#2d6584")
-    .atmosphereAltitude(0.16)
-    .pointAltitude(d => altFor(d))
-    .pointRadius(d => sizeFor(d))
+    .atmosphereColor(ATMO_COLOR)
+    .atmosphereAltitude(0.20)
+    .pointAltitude(d => altitudeFor(d))
+    .pointRadius(d => radiusFor(d))
     .pointColor(d => colorFor(d, state.colorMode))
-    .pointResolution(8)
-    .pointLabel(() => "")             // we render our own tooltip
+    .pointResolution(10)
+    .pointLabel(() => "")
     .onPointHover(handleHover)
     .onPointClick(handleClick);
 
-  // Custom material for the globe sphere — deep ocean tone
-  const globeMaterial = world.globeMaterial();
-  globeMaterial.color = new THREE.Color("#0b2237");
-  globeMaterial.emissive = new THREE.Color("#06182b");
-  globeMaterial.emissiveIntensity = 0.18;
-  globeMaterial.shininess = 0.5;
+  // Globe sphere — lifted enough off black to actually read as a globe
+  const gm = world.globeMaterial();
+  gm.color             = new THREE.Color(OCEAN_COLOR);
+  gm.emissive          = new THREE.Color(OCEAN_EMISSIVE);
+  gm.emissiveIntensity = 0.30;
+  gm.shininess         = 1.2;
 
-  // Slow auto-rotation
-  world.controls().autoRotate = true;
-  world.controls().autoRotateSpeed = 0.35;
-  world.controls().enableDamping = true;
-  world.controls().dampingFactor = 0.08;
+  const ctl = world.controls();
+  ctl.autoRotate      = true;
+  ctl.autoRotateSpeed = 0.45;
+  ctl.enableDamping   = true;
+  ctl.dampingFactor   = 0.08;
 
-  // World countries outline overlay (so users have a frame of reference)
-  fetch("https://cdn.jsdelivr.net/npm/three-globe@2.32.6/example/datasets/ne_110m_admin_0_countries.geojson")
+  // Country outline overlay
+  fetch("https://cdn.jsdelivr.net/npm/three-globe/example/country-polygons/ne_110m_admin_0_countries.geojson")
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(geo => {
       world
         .polygonsData(geo.features)
-        .polygonCapColor(() => "rgba(243,232,207,0.10)")
-        .polygonSideColor(() => "rgba(243,232,207,0.02)")
-        .polygonStrokeColor(() => "rgba(243,232,207,0.35)")
-        .polygonAltitude(0.003);
+        .polygonCapColor(()    => COUNTRY_FILL)
+        .polygonSideColor(()   => "rgba(243,232,207,0.04)")
+        .polygonStrokeColor(() => COUNTRY_STROKE)
+        .polygonAltitude(0.005);
+      console.log(`[globe] countries loaded: ${geo.features.length}`);
     })
-    .catch(err => console.warn("country outlines failed:", err));
+    .catch(err => console.warn("[globe] country outlines failed:", err));
 
-  // Pause autorotate on user interaction
-  const ctl = world.controls();
-  let userActive = false;
-  ctl.addEventListener("start", () => { userActive = true; ctl.autoRotate = false; });
-  ctl.addEventListener("end",   () => { setTimeout(() => {
-    if (!state.pinned) ctl.autoRotate = true;
-  }, 4000); });
-
-  // Resize handle
-  const stage = document.querySelector(".globe-stage");
-  const ro = new ResizeObserver(() => {
-    world.width(stage.clientWidth).height(stage.clientHeight);
+  let resumeTimer;
+  ctl.addEventListener("start", () => { clearTimeout(resumeTimer); ctl.autoRotate = false; });
+  ctl.addEventListener("end",   () => {
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => {
+      if (!state.pinned) ctl.autoRotate = true;
+    }, 4000);
   });
-  ro.observe(stage);
+
+  // Keep canvas sized to its stage
+  const stage = document.querySelector(".globe-stage");
+  const sync = () => world.width(stage.clientWidth).height(stage.clientHeight);
+  sync();
+  new ResizeObserver(sync).observe(stage);
+  window.addEventListener("orientationchange", () => setTimeout(sync, 250));
+
+  world.pointOfView({ lat: 5, lng: 160, altitude: 2.4 }, 0);
+  console.log(`[globe] ready, ${state.filtered.length} points to draw`);
 }
 
 function refreshGlobe() {
+  if (!world) return;
   world.pointsData(state.filtered)
        .pointColor(d => colorFor(d, state.colorMode))
-       .pointAltitude(d => altFor(d))
-       .pointRadius(d => sizeFor(d));
+       .pointAltitude(d => altitudeFor(d))
+       .pointRadius(d => radiusFor(d));
 }
 
 function handleHover(point) {
@@ -232,22 +247,18 @@ function handleHover(point) {
   }
 }
 
-// Better hover position tracking — Globe.gl hands us the datum but not the
-// fresh pointer coords, so attach a mousemove on the canvas.
 document.addEventListener("mousemove", e => {
-  if (tt.classList.contains("is-open")) {
-    tt.style.left = e.clientX + "px";
-    tt.style.top  = e.clientY + "px";
-  }
+  if (tt.classList.contains("is-open")) placeTip(e.clientX, e.clientY);
 });
 
 function handleClick(point) {
   if (!point) return;
   state.pinned = point;
   world.controls().autoRotate = false;
-  // Fly to atoll
-  world.pointOfView({ lat: point.lat, lng: point.lon, altitude: 1.6 }, 1500);
+  world.pointOfView({ lat: point.lat, lng: point.lon, altitude: 1.4 }, 1400);
   renderDetail(point);
+  // On mobile, slide the detail tray up
+  document.body.classList.add("has-pinned");
 }
 
 // ---- Filters UI ----------------------------------------------
@@ -269,16 +280,7 @@ function buildChips() {
       applyFilters();
     });
   });
-
-  // Legend mirror
-  const legend = document.getElementById("legend-list");
-  legend.innerHTML = regions.map(r => {
-    const n = state.raw.filter(a => a.region === r).length;
-    return `<li>
-      <span class="legend__swatch" style="background:${REGION_COLORS[r]}"></span>
-      ${r} <span style="margin-left:auto;color:var(--text-quiet)">${n}</span>
-    </li>`;
-  }).join("");
+  buildLegend();
 }
 
 function bindControls() {
@@ -297,19 +299,45 @@ function bindControls() {
 
   document.querySelectorAll("#color-mode button").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll("#color-mode button").forEach(b => b.classList.remove("is-active"));
+      document.querySelectorAll("#color-mode button")
+              .forEach(b => b.classList.remove("is-active"));
       btn.classList.add("is-active");
       state.colorMode = btn.dataset.mode;
       refreshGlobe();
       buildLegend();
     });
   });
+
+  // Mobile tray toggles
+  document.querySelectorAll("[data-toggle]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = document.getElementById(btn.dataset.toggle);
+      target?.classList.toggle("is-open");
+      btn.classList.toggle("is-active");
+    });
+  });
+
+  // Tap outside detail panel to dismiss on mobile
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".rail--right") &&
+        !e.target.closest("#globe") &&
+        document.body.classList.contains("has-pinned")) {
+      // ignore outside-globe clicks for now
+    }
+  });
 }
 
 function buildLegend() {
   const legend = document.getElementById("legend-list");
   if (state.colorMode === "region") {
-    buildChips();   // already populates legend
+    const regions = REGION_ORDER.filter(r => state.raw.some(a => a.region === r));
+    legend.innerHTML = regions.map(r => {
+      const n = state.raw.filter(a => a.region === r).length;
+      return `<li>
+        <span class="legend__swatch" style="background:${REGION_COLORS[r]}"></span>
+        ${r} <span style="margin-left:auto;color:var(--text-quiet)">${n}</span>
+      </li>`;
+    }).join("");
     return;
   }
   if (state.colorMode === "origin") {
@@ -325,7 +353,7 @@ function buildLegend() {
   if (state.colorMode === "richness") {
     legend.innerHTML = [2, 6, 10, 14, 18].map(n => {
       const t = Math.min(1, n / 18);
-      const c = d3.interpolateMagma(0.15 + 0.7 * t);
+      const c = d3.interpolateMagma(0.20 + 0.70 * t);
       return `<li>
         <span class="legend__swatch" style="background:${c}"></span>
         ${n} L5 classes
@@ -338,25 +366,20 @@ function buildLegend() {
 function hasWebGL() {
   try {
     const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+    return !!(c.getContext("webgl2") || c.getContext("webgl") ||
+              c.getContext("experimental-webgl"));
   } catch { return false; }
 }
 
 function showWebGLFallback() {
   const stage = document.getElementById("globe");
   stage.innerHTML = `
-    <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:40px;">
-      <div style="max-width:42ch;">
-        <p style="font-family:var(--f-display);font-style:italic;font-size:24px;
-                  color:var(--bone);line-height:1.3;margin:0 0 14px;">
-          The globe needs WebGL to spin.
-        </p>
-        <p style="font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;
-                  text-transform:uppercase;color:var(--text-quiet);line-height:1.7;">
-          This browser hasn’t exposed a WebGL context.<br>
-          Try a desktop Chrome, Firefox, or Safari — or a recent mobile browser.
-        </p>
-      </div>
+    <div class="webgl-fallback">
+      <p class="webgl-fallback__title">The globe needs WebGL to spin.</p>
+      <p class="webgl-fallback__sub">
+        This browser hasn’t exposed a WebGL context.<br>
+        Try a desktop Chrome, Firefox, or Safari — or a recent mobile browser.
+      </p>
     </div>`;
 }
 
@@ -370,7 +393,6 @@ async function main() {
   }));
   state.filtered = state.raw.filter(a => a.lat && a.lon);
 
-  // UI first so rails/chips/legend render even if WebGL is unavailable
   buildChips();
   bindControls();
   refreshHud();
@@ -383,7 +405,6 @@ async function main() {
   try {
     initGlobe();
     refreshGlobe();
-
     const stage = document.querySelector(".globe-stage");
     stage.animate(
       [ { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0)" } ],
