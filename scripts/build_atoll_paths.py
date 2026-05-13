@@ -13,16 +13,68 @@ enough for mobile WebGL.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import os
 import re
 import shutil
 import tempfile
+import unicodedata
 import zipfile
 from pathlib import Path
 
 import shapefile
+
+# Tokens we want to drop both as prefixes/suffixes AND as embedded words
+# in shapefile names like `kalpeniisland-cheriyamisland`.
+_GEO_TOKENS = {
+    "atoll", "atolls", "reef", "reefs", "bank", "banks", "shoal", "shoals",
+    "islet", "islets", "island", "islands", "isle", "isles", "par",
+    "pulau", "kepulauan", "iles", "ile", "isla", "islas",
+    "recif", "récif", "banc",
+    "north", "south", "east", "west",
+}
+_ARTICLES = {"de", "du", "des", "la", "le", "les", "d"}
+
+
+def _deaccent(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def keyize_mild(s: str) -> str:
+    """Mild normalisation: deaccent, lowercase, strip leading/trailing
+    geographic tokens only."""
+    s = _deaccent(s).lower()
+    s = re.sub(r"[\.,;:\-_'`\"()/&]", " ", s)
+    parts = [p for p in s.split() if p]
+    while parts and parts[0] in _GEO_TOKENS:
+        parts.pop(0)
+        while parts and parts[0] in _ARTICLES:
+            parts.pop(0)
+    while parts and parts[-1] in _GEO_TOKENS:
+        parts.pop()
+    return " ".join(parts)
+
+
+def keyize_loose(s: str) -> str:
+    """Aggressive normalisation: also strip geographic tokens embedded
+    anywhere, e.g. `kalpeni-island-cheriyam-island` → `kalpenicheriyam`."""
+    s = _deaccent(s).lower()
+    s = re.sub(r"[^a-z0-9]", " ", s)
+    parts = []
+    for p in s.split():
+        if not p or p in _ARTICLES:
+            continue
+        # Token-strip: walk the part word and remove embedded geo tokens
+        rest = p
+        # also strip when the geo token appears anywhere within the part
+        for token in sorted(_GEO_TOKENS, key=len, reverse=True):
+            rest = rest.replace(token, "")
+        if rest:
+            parts.append(rest)
+    return "".join(parts)
 
 
 # ---------------------------------------------------------------
@@ -103,9 +155,19 @@ MAX_POINTS = 16            # vertices per path (cheap to render)
 COORD_DECIMALS = 4         # ~11 m
 
 
-def load_atoll_lookup() -> dict[str, dict]:
+def load_atoll_lookup() -> tuple[dict[str, dict], dict[str, dict], dict[str, dict]]:
+    """Return three indices over the canonical atoll list:
+       (exact-name → atoll), (mild-key → atoll), (loose-key → atoll)."""
     payload = json.loads(ATOLLS_JSON.read_text())
-    return {a["name"].lower().strip(): a for a in payload["atolls"]}
+    by_name: dict[str, dict] = {}
+    by_mild: dict[str, dict] = {}
+    by_loose: dict[str, dict] = {}
+    for a in payload["atolls"]:
+        n = a["name"]
+        by_name[n.lower().strip()] = a
+        by_mild.setdefault(keyize_mild(n), a)
+        by_loose.setdefault(keyize_loose(n), a)
+    return by_name, by_mild, by_loose
 
 
 def atoll_name_from_filename(stem: str) -> str:
@@ -114,17 +176,27 @@ def atoll_name_from_filename(stem: str) -> str:
     return s.replace("_", " ").strip().lower()
 
 
-def match(stem: str, lut: dict[str, dict]) -> dict | None:
-    key = atoll_name_from_filename(stem)
-    if key in lut:
-        return lut[key]
-    key2 = key.replace("-", " ")
-    if key2 in lut:
-        return lut[key2]
-    flat = re.sub(r"[^a-z0-9]", "", key)
-    for k, v in lut.items():
-        if re.sub(r"[^a-z0-9]", "", k) == flat:
-            return v
+def match(stem: str, by_name: dict, by_mild: dict, by_loose: dict,
+          used: set) -> dict | None:
+    """Four-tier matcher (exact → mild → loose → difflib fuzzy)
+    that skips atolls already assigned to a different shapefile."""
+    raw = atoll_name_from_filename(stem)
+    # 1) exact
+    if raw in by_name and by_name[raw]["name"] not in used:
+        return by_name[raw]
+    # 2) mild
+    mk = keyize_mild(raw)
+    if mk in by_mild and by_mild[mk]["name"] not in used:
+        return by_mild[mk]
+    # 3) aggressive token strip
+    lk = keyize_loose(raw)
+    if lk in by_loose and by_loose[lk]["name"] not in used:
+        return by_loose[lk]
+    # 4) fuzzy on loose keys, unused only
+    unused_keys = [k for k, a in by_loose.items() if a["name"] not in used]
+    near = difflib.get_close_matches(lk, unused_keys, n=1, cutoff=0.78)
+    if near:
+        return by_loose[near[0]]
     return None
 
 
@@ -186,11 +258,13 @@ def largest_rim_ring(shp_path: Path) -> list[tuple] | None:
 
 
 def main() -> None:
-    lut = load_atoll_lookup()
-    print(f"Loaded {len(lut)} atolls from {ATOLLS_JSON.name}")
+    by_name, by_mild, by_loose = load_atoll_lookup()
+    used: set[str] = set()
+    print(f"Loaded {len(by_name)} atolls from {ATOLLS_JSON.name}")
 
     scratch = Path(tempfile.mkdtemp(prefix="atoll_paths_"))
     paths: list[dict] = []
+    unmatched: list[str] = []
     try:
         for region_zip in sorted(GIS_RAW.glob("*.zip")):
             print(f"  {region_zip.name} …", end=" ")
@@ -214,9 +288,13 @@ def main() -> None:
                 for dp, _, fs in os.walk(ctry):
                     shp_files.extend(Path(dp) / f for f in fs if f.endswith(".shp"))
                 for shp in shp_files:
-                    atoll = match(shp.stem, lut)
-                    if not atoll or (atoll.get("area_km2") or 0) < MIN_AREA_KM2:
+                    atoll = match(shp.stem, by_name, by_mild, by_loose, used)
+                    if not atoll:
+                        unmatched.append(shp.stem)
                         continue
+                    if (atoll.get("area_km2") or 0) < MIN_AREA_KM2:
+                        continue
+                    used.add(atoll["name"])
                     ring = largest_rim_ring(shp)
                     if not ring:
                         continue
@@ -256,6 +334,10 @@ def main() -> None:
     total_pts = sum(len(p["coords"]) for p in paths)
     print(f"\n[ok] {len(paths)} paths · {total_pts} total vertices → "
           f"{OUT} ({OUT.stat().st_size/1024:.1f} KB)")
+    if unmatched:
+        print(f"[warn] {len(unmatched)} shapefiles unmatched (will not get an outline):")
+        for s in unmatched[:20]:
+            print(f"    {s}")
 
 
 if __name__ == "__main__":

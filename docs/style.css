@@ -259,27 +259,31 @@ a:hover { color: var(--lagoon); }
   font-family: var(--f-display);
   font-style: italic;
   font-size: 18px;
-  padding: 6px 0 8px;
+  padding: 10px 0 10px;
   outline: none;
   transition: border-color .2s;
+  touch-action: manipulation;
 }
 .field__input::placeholder { color: var(--text-quiet); }
 .field__input:focus { border-bottom-color: var(--coral); }
 
 /* Chips for regions */
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 10px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 14px;          /* bigger touch target */
+  min-height: 36px;            /* WCAG-ish tap height */
   background: transparent;
   border: 1px solid rgba(215,168,91,.3);
   color: var(--text-dim);
   font-family: var(--f-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   cursor: pointer;
   transition: all .15s ease;
   border-radius: var(--radius);
+  touch-action: manipulation;  /* no double-tap delay, no scroll-eats-click */
+  -webkit-tap-highlight-color: rgba(255,121,100,.15);
 }
 .chip__swatch {
   width: 8px; height: 8px;
@@ -296,6 +300,7 @@ input[type=range] {
   flex: 1; height: 1px;
   background: rgba(215,168,91,.4);
   outline: none;
+  touch-action: manipulation;
 }
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -332,13 +337,15 @@ input[type=range]::-moz-range-thumb {
   color: var(--text-dim);
   border: none;
   font-family: var(--f-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 8px 4px;
+  padding: 12px 4px;            /* taller tap target */
   cursor: pointer;
   border-right: 1px solid rgba(215,168,91,.18);
   transition: all .15s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(255,121,100,.15);
 }
 .segmented button:last-child { border-right: none; }
 .segmented button.is-active {
@@ -675,7 +682,9 @@ input[type=range]::-moz-range-thumb {
     z-index: 20;
     padding: 32px var(--gutter) 24px;
     overflow-y: auto;
+    overscroll-behavior: contain;       /* don't bubble scroll to globe */
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;                /* horizontal touch reaches buttons */
   }
   .rail.is-open { transform: translateY(0); }
   .rail::before {
